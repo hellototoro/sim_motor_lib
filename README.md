@@ -48,6 +48,21 @@ The example prints CSV:
 time,requested,setpoint,actual,enabled,fault
 ```
 
+## CAN Protocol Layer
+
+The optional `sim_motor_can` library adds a portable CAN 2.0A protocol layer on
+top of the motor model. It handles standard-frame parsing, a simulated driver
+state machine, command watchdog timeout, fixed-size transmit queue, and periodic
+status/speed feedback frames.
+
+The CAN layer does not call any MCU HAL directly. Feed received frames into
+`sim_motor_can_node_receive()`, call `sim_motor_can_node_update()` from your
+periodic task, and drain outgoing frames with `sim_motor_can_node_next_tx()`.
+
+See the full Chinese protocol document:
+
+- `docs/CAN_PROTOCOL.md`
+
 ## MCU Usage
 
 Copy or add these files to the firmware project:

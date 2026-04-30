@@ -23,6 +23,18 @@ else()
     target_compile_options(sim_motor PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(sim_motor_can STATIC
+    src/sim_motor_can.c)
+
+target_link_libraries(sim_motor_can PUBLIC sim_motor)
+target_compile_features(sim_motor_can PUBLIC c_std_99)
+
+if(MSVC)
+    target_compile_options(sim_motor_can PRIVATE /W4)
+else()
+    target_compile_options(sim_motor_can PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 if(SIM_MOTOR_BUILD_EXAMPLES)
     add_executable(sim_motor_example_pc
         examples/sim_motor_example_pc.c)
@@ -37,4 +49,10 @@ if(SIM_MOTOR_BUILD_TESTS)
     target_link_libraries(sim_motor_tests PRIVATE sim_motor)
 
     add_test(NAME sim_motor_tests COMMAND sim_motor_tests)
+
+    add_executable(sim_motor_can_tests
+        tests/test_sim_motor_can.c)
+    target_link_libraries(sim_motor_can_tests PRIVATE sim_motor_can)
+
+    add_test(NAME sim_motor_can_tests COMMAND sim_motor_can_tests)
 endif()
