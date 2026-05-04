@@ -54,6 +54,19 @@ static int32_t read_i32_le(const uint8_t *data)
     return (int32_t)raw;
 }
 
+static int64_t read_i64_le(const uint8_t *data)
+{
+    uint64_t raw = (uint64_t)data[0] |
+                   ((uint64_t)data[1] << 8) |
+                   ((uint64_t)data[2] << 16) |
+                   ((uint64_t)data[3] << 24) |
+                   ((uint64_t)data[4] << 32) |
+                   ((uint64_t)data[5] << 40) |
+                   ((uint64_t)data[6] << 48) |
+                   ((uint64_t)data[7] << 56);
+    return (int64_t)raw;
+}
+
 static sim_motor_can_node_config_t test_config(void)
 {
     sim_motor_can_node_config_t config;
@@ -67,6 +80,7 @@ static sim_motor_can_node_config_t test_config(void)
     config.motor_config.max_motor_accel_rpm_s = 50.0f;
     config.motor_config.max_motor_decel_rpm_s = 80.0f;
     config.motor_config.max_abs_rpm = 500.0f;
+    config.motor_config.steady_noise_ratio = -1.0f;
 
     return config;
 }
@@ -281,6 +295,34 @@ static void test_periodic_status_and_speed_frames(void)
     expect_int(tx.dlc, 8u, "speed dlc is 8");
 }
 
+static void test_position_query_frame(void)
+{
+    sim_motor_can_node_t node;
+    sim_motor_can_frame_t frame;
+    sim_motor_can_frame_t tx;
+    sim_motor_can_node_config_t config = test_config();
+
+    config.motor_config.max_setpoint_accel_rpm_s = 1000.0f;
+    config.motor_config.max_motor_accel_rpm_s = 1000.0f;
+
+    expect_int(sim_motor_can_node_init(&node, &config), SIM_MOTOR_CAN_OK,
+               "node init succeeds");
+
+    sim_motor_enable(&node.motor, 1);
+    sim_motor_set_target_rpm(&node.motor, 60.0f);
+    sim_motor_update(&node.motor, 1.0f);
+
+    frame = query_frame(5u, SIM_MOTOR_CAN_QUERY_POSITION, 40u);
+    expect_int(sim_motor_can_node_receive(&node, &frame), SIM_MOTOR_CAN_OK,
+               "position query succeeds");
+    expect_int(drain_one(&node, &tx), SIM_MOTOR_CAN_OK, "position frame is queued");
+    expect_int(tx.id, SIM_MOTOR_CAN_ID_POSITION_FEEDBACK_BASE + 5u,
+               "position id matches node");
+    expect_int(tx.dlc, 8u, "position dlc is 8");
+    expect_int((int)read_i64_le(&tx.data[0]), 1000,
+               "position feedback uses rev_x1000");
+}
+
 static void test_tx_queue_full_returns_error(void)
 {
     sim_motor_can_node_t node;
@@ -309,6 +351,7 @@ int main(void)
     test_control_state_machine_and_fault_reset();
     test_timeout_enters_fault_and_stops();
     test_periodic_status_and_speed_frames();
+    test_position_query_frame();
     test_tx_queue_full_returns_error();
 
     if (g_failures != 0) {

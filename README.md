@@ -12,9 +12,14 @@
 - `requested_rpm`：用户请求的目标转速，会被限制在配置的速度范围内。
 - `setpoint_rpm`：驱动内部设定值，以斜坡限幅方式向请求转速逼近。
 - `actual_rpm`：模拟测得的电机转速，以斜坡限幅方式向设定值逼近。
+- `position_rev`：由实际转速积分得到的有符号电机轴位置，单位为圈。
 
 当电机被禁用或故障时，设定值会以斜坡回到 `0 rpm`。实际转速仍按配置的加速度或
 减速度限制，继续跟随设定值变化。
+
+当实际速度到达内部设定值后，`actual_rpm` 会按 `steady_noise_ratio` 产生小范围
+随机浮动。配置值为 `0` 时使用默认 `0.01`，即目标速度的 `±1%`；配置为负数可关闭
+浮动。随机序列由库内部 PRNG 产生，可通过 `sim_motor_set_noise_seed()` 固定。
 
 ## 构建
 
@@ -39,7 +44,7 @@ ctest --test-dir build
 示例输出 CSV：
 
 ```text
-time,requested,setpoint,actual,enabled,fault
+time,requested,setpoint,actual,position_rev,enabled,fault
 ```
 
 ## CAN 协议层
@@ -75,6 +80,7 @@ const sim_motor_config_t config = {
     900.0f,
     1200.0f,
     3000.0f,
+    0.01f,
 };
 
 sim_motor_init(&motor, &config);
@@ -83,6 +89,9 @@ sim_motor_set_target_rpm(&motor, 1000.0f);
 
 /* 每 10 ms 调用一次。 */
 sim_motor_update(&motor, 0.01f);
+
+/* 读取有符号电机轴位置，单位为圈。 */
+float position_rev = sim_motor_get_position_rev(&motor);
 ```
 
 ## Zephyr 使用

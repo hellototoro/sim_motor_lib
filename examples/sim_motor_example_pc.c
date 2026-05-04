@@ -24,6 +24,7 @@ int main(void)
         900.0f,
         1200.0f,
         3000.0f,
+        0.01f,
     };
     const float dt_s = 0.01f;
     const float duration_s = 9.0f;
@@ -33,17 +34,18 @@ int main(void)
     sim_motor_init(&motor, &config);
     sim_motor_enable(&motor, 1);
 
-    printf("time,requested,setpoint,actual,enabled,fault\n");
+    printf("time,requested,setpoint,actual,position_rev,enabled,fault\n");
 
     for (time_s = 0.0f; time_s <= duration_s + 0.0001f; time_s += dt_s) {
         sim_motor_set_target_rpm(&motor, command_for_time(time_s));
         sim_motor_update(&motor, dt_s);
 
-        printf("%.2f,%.3f,%.3f,%.3f,%d,%d\n",
+        printf("%.2f,%.3f,%.3f,%.3f,%.6f,%d,%d\n",
                time_s,
                sim_motor_get_requested_rpm(&motor),
                sim_motor_get_setpoint_rpm(&motor),
                sim_motor_get_actual_rpm(&motor),
+               sim_motor_get_position_rev(&motor),
                sim_motor_is_enabled(&motor),
                sim_motor_is_faulted(&motor));
     }

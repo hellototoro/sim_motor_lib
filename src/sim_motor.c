@@ -1,5 +1,9 @@
 #include "sim_motor/sim_motor.h"
 
+#define SIM_MOTOR_DEFAULT_STEADY_NOISE_RATIO 0.01f
+#define SIM_MOTOR_DEFAULT_NOISE_SEED 0x12345678u
+#define SIM_MOTOR_STEADY_EPSILON_RPM 0.0001f
+
 static float sim_motor_absf(float value)
 {
     return value < 0.0f ? -value : value;
@@ -33,6 +37,7 @@ static sim_motor_config_t sim_motor_sanitize_config(const sim_motor_config_t *co
         sanitized.max_motor_accel_rpm_s = 800.0f;
         sanitized.max_motor_decel_rpm_s = 800.0f;
         sanitized.max_abs_rpm = 3000.0f;
+        sanitized.steady_noise_ratio = SIM_MOTOR_DEFAULT_STEADY_NOISE_RATIO;
     }
 
     sanitized.max_setpoint_accel_rpm_s =
@@ -44,6 +49,11 @@ static sim_motor_config_t sim_motor_sanitize_config(const sim_motor_config_t *co
     sanitized.max_motor_decel_rpm_s =
         sim_motor_positive_or_zero(sanitized.max_motor_decel_rpm_s);
     sanitized.max_abs_rpm = sim_motor_absf(sanitized.max_abs_rpm);
+    if (sanitized.steady_noise_ratio == 0.0f) {
+        sanitized.steady_noise_ratio = SIM_MOTOR_DEFAULT_STEADY_NOISE_RATIO;
+    } else if (sanitized.steady_noise_ratio < 0.0f) {
+        sanitized.steady_noise_ratio = 0.0f;
+    }
 
     return sanitized;
 }
@@ -95,6 +105,42 @@ static float sim_motor_approach(float current,
     return target;
 }
 
+static uint32_t sim_motor_next_noise_seed(uint32_t seed)
+{
+    if (seed == 0u) {
+        seed = SIM_MOTOR_DEFAULT_NOISE_SEED;
+    }
+
+    return seed * 1664525u + 1013904223u;
+}
+
+static float sim_motor_noise_unit(uint32_t seed)
+{
+    const uint32_t mantissa = (seed >> 8) & 0x00FFFFFFu;
+    return ((float)mantissa / 8388607.5f) - 1.0f;
+}
+
+static float sim_motor_apply_steady_noise(sim_motor_t *motor, float nominal_rpm)
+{
+    float band_rpm;
+
+    if (motor->config.steady_noise_ratio <= 0.0f) {
+        return nominal_rpm;
+    }
+
+    if (sim_motor_absf(nominal_rpm - motor->setpoint_rpm) > SIM_MOTOR_STEADY_EPSILON_RPM) {
+        return nominal_rpm;
+    }
+
+    band_rpm = sim_motor_absf(motor->setpoint_rpm) * motor->config.steady_noise_ratio;
+    if (band_rpm <= 0.0f) {
+        return nominal_rpm;
+    }
+
+    motor->noise_seed = sim_motor_next_noise_seed(motor->noise_seed);
+    return motor->setpoint_rpm + sim_motor_noise_unit(motor->noise_seed) * band_rpm;
+}
+
 void sim_motor_init(sim_motor_t *motor, const sim_motor_config_t *config)
 {
     if (motor == 0) {
@@ -105,6 +151,8 @@ void sim_motor_init(sim_motor_t *motor, const sim_motor_config_t *config)
     motor->requested_rpm = 0.0f;
     motor->setpoint_rpm = 0.0f;
     motor->actual_rpm = 0.0f;
+    motor->position_rev = 0.0f;
+    motor->noise_seed = SIM_MOTOR_DEFAULT_NOISE_SEED;
     motor->enabled = 0;
     motor->faulted = 0;
 }
@@ -183,6 +231,8 @@ void sim_motor_update(sim_motor_t *motor, float dt_s)
         motor->config.max_motor_accel_rpm_s,
         motor->config.max_motor_decel_rpm_s,
         dt_s);
+    motor->actual_rpm = sim_motor_apply_steady_noise(motor, motor->actual_rpm);
+    motor->position_rev += (motor->actual_rpm / 60.0f) * dt_s;
 }
 
 float sim_motor_get_requested_rpm(const sim_motor_t *motor)
@@ -198,6 +248,29 @@ float sim_motor_get_setpoint_rpm(const sim_motor_t *motor)
 float sim_motor_get_actual_rpm(const sim_motor_t *motor)
 {
     return motor != 0 ? motor->actual_rpm : 0.0f;
+}
+
+float sim_motor_get_position_rev(const sim_motor_t *motor)
+{
+    return motor != 0 ? motor->position_rev : 0.0f;
+}
+
+void sim_motor_reset_position(sim_motor_t *motor)
+{
+    if (motor == 0) {
+        return;
+    }
+
+    motor->position_rev = 0.0f;
+}
+
+void sim_motor_set_noise_seed(sim_motor_t *motor, uint32_t seed)
+{
+    if (motor == 0) {
+        return;
+    }
+
+    motor->noise_seed = seed != 0u ? seed : SIM_MOTOR_DEFAULT_NOISE_SEED;
 }
 
 int sim_motor_is_enabled(const sim_motor_t *motor)

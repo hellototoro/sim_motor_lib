@@ -6,7 +6,7 @@
 #define SIM_MOTOR_CAN_FLAG_WATCHDOG_ACTIVE 0x08u
 
 #define SIM_MOTOR_CAN_STOP_EPSILON_RPM 0.001f
-#define SIM_MOTOR_CAN_PROTOCOL_VERSION 1u
+#define SIM_MOTOR_CAN_PROTOCOL_VERSION 2u
 
 static int32_t can_read_i32_le(const uint8_t *data)
 {
@@ -36,6 +36,19 @@ static void can_write_i32_le(uint8_t *data, int32_t value)
     can_write_u32_le(data, (uint32_t)value);
 }
 
+static void can_write_i64_le(uint8_t *data, int64_t value)
+{
+    uint64_t raw = (uint64_t)value;
+    data[0] = (uint8_t)(raw & 0xFFu);
+    data[1] = (uint8_t)((raw >> 8) & 0xFFu);
+    data[2] = (uint8_t)((raw >> 16) & 0xFFu);
+    data[3] = (uint8_t)((raw >> 24) & 0xFFu);
+    data[4] = (uint8_t)((raw >> 32) & 0xFFu);
+    data[5] = (uint8_t)((raw >> 40) & 0xFFu);
+    data[6] = (uint8_t)((raw >> 48) & 0xFFu);
+    data[7] = (uint8_t)((raw >> 56) & 0xFFu);
+}
+
 static float can_absf(float value)
 {
     return value < 0.0f ? -value : value;
@@ -57,6 +70,19 @@ static int32_t rpm_to_x100(float rpm)
 static float rpm_from_x100(int32_t rpm_x100)
 {
     return (float)rpm_x100 / 100.0f;
+}
+
+static int64_t position_to_x1000(float position_rev)
+{
+    float scaled = position_rev * 1000.0f;
+
+    if (scaled >= 0.0f) {
+        scaled += 0.5f;
+    } else {
+        scaled -= 0.5f;
+    }
+
+    return (int64_t)scaled;
 }
 
 static int tx_push(sim_motor_can_node_t *node, const sim_motor_can_frame_t *frame)
@@ -114,6 +140,18 @@ static int enqueue_speed(sim_motor_can_node_t *node)
     frame.dlc = 8u;
     can_write_i32_le(&frame.data[0], rpm_to_x100(sim_motor_get_actual_rpm(&node->motor)));
     can_write_i32_le(&frame.data[4], rpm_to_x100(sim_motor_get_setpoint_rpm(&node->motor)));
+
+    return tx_push(node, &frame);
+}
+
+static int enqueue_position(sim_motor_can_node_t *node)
+{
+    sim_motor_can_frame_t frame;
+
+    frame.id = (uint16_t)(SIM_MOTOR_CAN_ID_POSITION_FEEDBACK_BASE + node->config.node_id);
+    frame.dlc = 8u;
+    can_write_i64_le(&frame.data[0],
+                     position_to_x1000(sim_motor_get_position_rev(&node->motor)));
 
     return tx_push(node, &frame);
 }
@@ -400,6 +438,8 @@ static int handle_query(sim_motor_can_node_t *node,
         tx_result = enqueue_speed(node);
     } else if (query_type == SIM_MOTOR_CAN_QUERY_PROTOCOL_INFO) {
         tx_result = enqueue_protocol_info(node);
+    } else if (query_type == SIM_MOTOR_CAN_QUERY_POSITION) {
+        tx_result = enqueue_position(node);
     } else {
         tx_result = enqueue_ack(node, 0x30u, SIM_MOTOR_CAN_ACK_BAD_COMMAND, seq, query_type);
     }

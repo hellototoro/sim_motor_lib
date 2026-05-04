@@ -35,6 +35,7 @@ static sim_motor_config_t test_config(void)
     config.max_motor_accel_rpm_s = 50.0f;
     config.max_motor_decel_rpm_s = 80.0f;
     config.max_abs_rpm = 500.0f;
+    config.steady_noise_ratio = -1.0f;
     return config;
 }
 
@@ -187,12 +188,80 @@ static void test_non_positive_dt_does_not_change_state(void)
                 "zero dt leaves setpoint unchanged");
     expect_near(sim_motor_get_actual_rpm(&motor), 0.0f, TEST_EPSILON,
                 "zero dt leaves actual unchanged");
+    expect_near(sim_motor_get_position_rev(&motor), 0.0f, TEST_EPSILON,
+                "zero dt leaves position unchanged");
 
     sim_motor_update(&motor, -0.1f);
     expect_near(sim_motor_get_setpoint_rpm(&motor), 0.0f, TEST_EPSILON,
                 "negative dt leaves setpoint unchanged");
     expect_near(sim_motor_get_actual_rpm(&motor), 0.0f, TEST_EPSILON,
                 "negative dt leaves actual unchanged");
+    expect_near(sim_motor_get_position_rev(&motor), 0.0f, TEST_EPSILON,
+                "negative dt leaves position unchanged");
+}
+
+static void test_position_integrates_signed_revolutions(void)
+{
+    sim_motor_config_t config = test_config();
+    sim_motor_t motor;
+
+    config.max_setpoint_accel_rpm_s = 1000.0f;
+    config.max_motor_accel_rpm_s = 1000.0f;
+    config.max_setpoint_decel_rpm_s = 1000.0f;
+    config.max_motor_decel_rpm_s = 1000.0f;
+
+    sim_motor_init(&motor, &config);
+    sim_motor_enable(&motor, 1);
+    sim_motor_set_target_rpm(&motor, 60.0f);
+    sim_motor_update(&motor, 1.0f);
+
+    expect_near(sim_motor_get_position_rev(&motor), 1.0f, TEST_EPSILON,
+                "positive rpm increases signed position in revolutions");
+
+    sim_motor_set_target_rpm(&motor, -60.0f);
+    sim_motor_update(&motor, 1.0f);
+
+    expect_near(sim_motor_get_position_rev(&motor), 0.0f, TEST_EPSILON,
+                "negative rpm decreases signed position in revolutions");
+
+    sim_motor_reset_position(&motor);
+    expect_near(sim_motor_get_position_rev(&motor), 0.0f, TEST_EPSILON,
+                "position reset clears signed position");
+}
+
+static void test_steady_speed_has_seeded_noise(void)
+{
+    sim_motor_config_t config = test_config();
+    sim_motor_t motor_a;
+    sim_motor_t motor_b;
+    float actual_a;
+    float actual_b;
+
+    config.max_setpoint_accel_rpm_s = 1000.0f;
+    config.max_motor_accel_rpm_s = 1000.0f;
+    config.steady_noise_ratio = 0.0f;
+
+    sim_motor_init(&motor_a, &config);
+    sim_motor_init(&motor_b, &config);
+    sim_motor_set_noise_seed(&motor_a, 7u);
+    sim_motor_set_noise_seed(&motor_b, 7u);
+    sim_motor_enable(&motor_a, 1);
+    sim_motor_enable(&motor_b, 1);
+    sim_motor_set_target_rpm(&motor_a, 100.0f);
+    sim_motor_set_target_rpm(&motor_b, 100.0f);
+
+    sim_motor_update(&motor_a, 1.0f);
+    sim_motor_update(&motor_b, 1.0f);
+
+    actual_a = sim_motor_get_actual_rpm(&motor_a);
+    actual_b = sim_motor_get_actual_rpm(&motor_b);
+
+    expect_true(test_absf(actual_a - sim_motor_get_setpoint_rpm(&motor_a)) <= 1.0f,
+                "steady noise stays within one percent of setpoint");
+    expect_true(test_absf(actual_a - sim_motor_get_setpoint_rpm(&motor_a)) > TEST_EPSILON,
+                "steady noise keeps actual speed from staying fixed at setpoint");
+    expect_near(actual_a, actual_b, TEST_EPSILON,
+                "seeded steady noise is reproducible");
 }
 
 int main(void)
@@ -203,6 +272,8 @@ int main(void)
     test_disable_ramps_to_zero();
     test_fault_ignores_new_target_until_reset();
     test_non_positive_dt_does_not_change_state();
+    test_position_integrates_signed_revolutions();
+    test_steady_speed_has_seeded_noise();
 
     if (g_failures != 0) {
         printf("%d test failure(s)\n", g_failures);

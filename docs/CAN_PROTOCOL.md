@@ -6,7 +6,7 @@
 
 协议层只处理 CAN 帧编解码与驱动器状态机，不绑定任何 CAN HAL、RTOS、线程或系统时钟。应用层负责从真实 CAN 外设接收帧并调用 `sim_motor_can_node_receive()`，再通过 `sim_motor_can_node_next_tx()` 取出待发送帧交给 CAN 外设发送。
 
-建议总线速率为 `500 kbit/s` 或 `1 Mbit/s`。第一版仅支持 Classical CAN 标准帧，数据区最大 8 字节，不支持 CAN FD。
+建议总线速率为 `500 kbit/s` 或 `1 Mbit/s`。当前协议仅支持 Classical CAN 标准帧，数据区最大 8 字节，不支持 CAN FD。
 
 ## 2. 基本约定
 
@@ -29,6 +29,7 @@
 | 主站到驱动器 | `0x300 + node_id` | Query | 2 | 查询状态、速度或协议信息 |
 | 驱动器到主站 | `0x500 + node_id` | Status | 8 | 驱动器状态周期上报或查询响应 |
 | 驱动器到主站 | `0x580 + node_id` | Speed Feedback | 8 | 当前速度和内部设定速度 |
+| 驱动器到主站 | `0x5C0 + node_id` | Position Feedback | 8 | 当前有符号电机轴位置 |
 | 驱动器到主站 | `0x600 + node_id` | Ack/Error | 8 | 命令确认、错误或协议信息 |
 
 示例：节点 `5` 的速度命令帧 ID 为 `0x205`，状态反馈帧 ID 为 `0x505`。
@@ -95,6 +96,7 @@ CAN ID：`0x300 + node_id`
 | 1 | status | Status |
 | 2 | speed | Speed Feedback |
 | 3 | protocol_info | Ack/Error 格式的协议信息 |
+| 4 | position | Position Feedback |
 
 广播 Query 不产生响应。
 
@@ -151,7 +153,18 @@ CAN ID：`0x580 + node_id`
 
 `actual_rpm_x100` 和 `setpoint_rpm_x100` 均为 little-endian。
 
-### 5.3 Ack/Error
+### 5.3 Position Feedback
+
+CAN ID：`0x5C0 + node_id`
+
+| Byte | 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| 0..7 | position_rev_x1000 | `int64_t` | 有符号电机轴位置，单位为圈，乘以 1000 |
+
+`position_rev_x1000` 为 little-endian。正转位置增加，反转位置减少。例如
+`12.345 rev` 编码为 `12345`，`-1.000 rev` 编码为 `-1000`。
+
+### 5.4 Ack/Error
 
 CAN ID：`0x600 + node_id`
 
@@ -202,7 +215,7 @@ FAULT --fault_reset--> DISABLED
 1. 周期发送 Heartbeat，周期应小于驱动器配置的 `command_timeout_ms`。
 2. 发送 Control enable，等待 Ack/Error 成功。
 3. 周期发送 Speed Command，或在目标速度变化时发送。
-4. 周期接收 Status 和 Speed Feedback。
+4. 周期接收 Status 和 Speed Feedback，按需查询 Position Feedback。
 5. 如 Status 显示 FAULT，发送 Control fault_reset。
 6. reset 成功后重新 enable，再恢复速度命令。
 
@@ -218,7 +231,7 @@ void app_init(void)
         100,
         20,
         20,
-        {1500.0f, 2000.0f, 900.0f, 1200.0f, 3000.0f}
+        {1500.0f, 2000.0f, 900.0f, 1200.0f, 3000.0f, 0.01f}
     };
 
     sim_motor_can_node_init(&node, &cfg);

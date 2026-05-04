@@ -18,6 +18,7 @@ extern "C" {
 #define SIM_MOTOR_CAN_ID_QUERY_BASE 0x300u
 #define SIM_MOTOR_CAN_ID_STATUS_BASE 0x500u
 #define SIM_MOTOR_CAN_ID_SPEED_FEEDBACK_BASE 0x580u
+#define SIM_MOTOR_CAN_ID_POSITION_FEEDBACK_BASE 0x5C0u
 #define SIM_MOTOR_CAN_ID_ACK_BASE 0x600u
 
 typedef struct {
@@ -56,7 +57,8 @@ typedef enum {
 typedef enum {
     SIM_MOTOR_CAN_QUERY_STATUS = 1,
     SIM_MOTOR_CAN_QUERY_SPEED = 2,
-    SIM_MOTOR_CAN_QUERY_PROTOCOL_INFO = 3
+    SIM_MOTOR_CAN_QUERY_PROTOCOL_INFO = 3,
+    SIM_MOTOR_CAN_QUERY_POSITION = 4
 } sim_motor_can_query_t;
 
 typedef enum {
