@@ -1,28 +1,22 @@
 # sim_motor_lib
 
-Portable C99 simulated motor driver for speed-loop testing on a PC, bare-metal
-MCU, or RTOS project.
+用于在 PC、裸机 MCU 或 RTOS 项目中进行速度环测试的可移植 C99 模拟电机驱动。
 
-The library has no dynamic allocation, no threads, no timers, and no hardware
-dependencies. The caller owns time by periodically calling `sim_motor_update()`
-with the elapsed time in seconds.
+该库不使用动态内存、线程或定时器，也不依赖硬件。调用方负责时间推进：周期性
+调用 `sim_motor_update()` 并传入以秒为单位的时间增量。
 
-## Model
+## 模型
 
-The speed command is modeled in three layers:
+速度指令分为三层：
 
-- `requested_rpm`: user-requested target speed, clamped to the configured speed
-  range.
-- `setpoint_rpm`: internal driver setpoint, ramp-limited toward the requested
-  speed.
-- `actual_rpm`: simulated measured motor speed, ramp-limited toward the
-  setpoint.
+- `requested_rpm`：用户请求的目标转速，会被限制在配置的速度范围内。
+- `setpoint_rpm`：驱动内部设定值，以斜坡限幅方式向请求转速逼近。
+- `actual_rpm`：模拟测得的电机转速，以斜坡限幅方式向设定值逼近。
 
-Disabled or faulted motors ramp the setpoint back to `0 rpm`, while the actual
-speed continues to follow the setpoint using the configured motor acceleration
-or deceleration limits.
+当电机被禁用或故障时，设定值会以斜坡回到 `0 rpm`。实际转速仍按配置的加速度或
+减速度限制，继续跟随设定值变化。
 
-## Build
+## 构建
 
 ```sh
 cmake -S . -B build -G Ninja
@@ -30,48 +24,47 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Run the PC example:
+运行 PC 示例：
 
 ```sh
 ./build/sim_motor_example_pc
 ```
 
-On Windows with Ninja, the executable is usually:
+在 Windows 上使用 Ninja 时，可执行文件通常为：
 
 ```sh
 ./build/sim_motor_example_pc.exe
 ```
 
-The example prints CSV:
+示例输出 CSV：
 
 ```text
 time,requested,setpoint,actual,enabled,fault
 ```
 
-## CAN Protocol Layer
+## CAN 协议层
 
-The optional `sim_motor_can` library adds a portable CAN 2.0A protocol layer on
-top of the motor model. It handles standard-frame parsing, a simulated driver
-state machine, command watchdog timeout, fixed-size transmit queue, and periodic
-status/speed feedback frames.
+可选的 `sim_motor_can` 库在电机模型之上提供可移植的 CAN 2.0A 协议层。它包含
+标准帧解析、模拟驱动状态机、指令看门狗超时、固定大小发送队列以及周期性
+状态/速度反馈帧。
 
-The CAN layer does not call any MCU HAL directly. Feed received frames into
-`sim_motor_can_node_receive()`, call `sim_motor_can_node_update()` from your
-periodic task, and drain outgoing frames with `sim_motor_can_node_next_tx()`.
+CAN 层不会直接调用 MCU HAL。将接收到的帧喂给
+`sim_motor_can_node_receive()`，在周期任务中调用
+`sim_motor_can_node_update()`，并通过 `sim_motor_can_node_next_tx()`
+取出待发送帧。
 
-See the full Chinese protocol document:
+完整的中文协议文档：
 
 - `docs/CAN_PROTOCOL.md`
 
-## MCU Usage
+## MCU 使用
 
-Copy or add these files to the firmware project:
+将以下文件复制或添加到固件工程：
 
 - `include/sim_motor/sim_motor.h`
 - `src/sim_motor.c`
 
-Then call `sim_motor_update()` from a fixed-period loop, timer callback, or RTOS
-task:
+然后在固定周期循环、定时器回调或 RTOS 任务中调用 `sim_motor_update()`：
 
 ```c
 sim_motor_t motor;
@@ -88,6 +81,22 @@ sim_motor_init(&motor, &config);
 sim_motor_enable(&motor, 1);
 sim_motor_set_target_rpm(&motor, 1000.0f);
 
-/* Called every 10 ms. */
+/* 每 10 ms 调用一次。 */
 sim_motor_update(&motor, 0.01f);
+```
+
+## Zephyr 使用
+
+该仓库可直接作为 Zephyr 模块使用:
+
+```shell
+west build -p always -b <board> app -- -DEXTRA_ZEPHYR_MODULES="path/to/sim_motor_lib"
+```
+
+在 `prj.conf` 中启用库：
+
+```text
+CONFIG_SIM_MOTOR_LIB=y
+CONFIG_SIM_MOTOR_CAN_NODE_ID=5
+CONFIG_SIM_MOTOR_CAN_BITRATE=500000
 ```

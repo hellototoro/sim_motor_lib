@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig SIM_MOTOR_LIB
+	bool "Simulated CAN motor driver library"
+	help
+	  Enables the portable simulated motor driver and CAN protocol library.
+
+if SIM_MOTOR_LIB
+
+config SIM_MOTOR_CAN_NODE_ID
+	int "Default CAN node ID"
+	default 5
+	range 1 127
+	help
+	  Node ID used by the simulated CAN motor driver.
+
+config SIM_MOTOR_CAN_BITRATE
+	int "Default CAN bitrate"
+	default 500000
+	help
+	  CAN arbitration bitrate configured by the application.
+
+config SIM_MOTOR_CAN_COMMAND_TIMEOUT_MS
+	int "CAN command timeout in milliseconds"
+	default 100
+	help
+	  The driver enters fault state if heartbeat/control/speed commands stop
+	  arriving for longer than this timeout after the watchdog is active.
+
+config SIM_MOTOR_CAN_STATUS_PERIOD_MS
+	int "Status frame period in milliseconds"
+	default 20
+
+config SIM_MOTOR_CAN_SPEED_PERIOD_MS
+	int "Speed feedback frame period in milliseconds"
+	default 20
+
+config SIM_MOTOR_MAX_SETPOINT_ACCEL_RPM_S
+	int "Setpoint acceleration limit in rpm/s"
+	default 1500
+
+config SIM_MOTOR_MAX_SETPOINT_DECEL_RPM_S
+	int "Setpoint deceleration limit in rpm/s"
+	default 2000
+
+config SIM_MOTOR_MAX_MOTOR_ACCEL_RPM_S
+	int "Motor acceleration limit in rpm/s"
+	default 900
+
+config SIM_MOTOR_MAX_MOTOR_DECEL_RPM_S
+	int "Motor deceleration limit in rpm/s"
+	default 1200
+
+config SIM_MOTOR_MAX_ABS_RPM
+	int "Maximum absolute speed in rpm"
+	default 3000
+
+endif

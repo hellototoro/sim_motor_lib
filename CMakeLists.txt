@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 
+if(COMMAND zephyr_library_named)
+    if(CONFIG_SIM_MOTOR_LIB)
+        zephyr_include_directories(include)
+        zephyr_library_named(sim_motor)
+        zephyr_library_sources(
+            src/sim_motor.c
+            src/sim_motor_can.c)
+    endif()
+
+    return()
+endif()
+
 project(sim_motor_lib
     VERSION 0.1.0
     DESCRIPTION "Portable simulated motor driver speed-loop library"
